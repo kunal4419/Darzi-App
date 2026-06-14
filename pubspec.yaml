@@ -1,0 +1,67 @@
+name: darzi_app
+description: "Darzi App — Hindi-first tailoring order management app for sewing workers."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # State management + navigation
+  get: ^4.7.2
+
+  # Supabase database
+  supabase_flutter: ^2.9.0
+
+  # Voice input (Hindi speech recognition)
+  speech_to_text: ^7.0.0
+
+  # Environment variables (.env file)
+  flutter_dotenv: ^5.2.1
+
+  # Date formatting
+  intl: ^0.20.2
+
+  # URL launcher (phone calls)
+  url_launcher: ^6.3.2
+  share_plus: ^13.1.0
+  path_provider: ^2.1.5
+  screenshot: ^3.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/images/logo2.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/logo2.png"
+  remove_alpha_ios: true
+
+flutter:
+  uses-material-design: true
+
+  # Load assets
+  assets:
+    - .env
+    - assets/images/logo.png
+    - assets/images/logo2.png
+
+  fonts:
+    - family: Geist
+      fonts:
+        - asset: assets/fonts/Geist.ttf
+
+    - family: Geist Mono
+      fonts:
+        - asset: assets/fonts/Geist.ttf
