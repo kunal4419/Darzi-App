@@ -45,6 +45,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
   final List<ClothFormItem> _clothItems = [];
   double _pendingPreview = 0.0;
   DateTime? _deliveryDate;
+  String? _currentErrorField;
 
   bool get _isEditing => widget.editOrder != null;
 
@@ -182,9 +183,146 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
     }
   }
 
+  void _scrollToFieldAndFocus(TextEditingController controller) {
+    Element? targetElement;
+    EditableTextState? targetEditableTextState;
+
+    void visitor(Element element) {
+      if (targetElement != null) return;
+
+      if (element is StatefulElement && element.state is EditableTextState) {
+        final editableState = element.state as EditableTextState;
+        if (editableState.widget.controller == controller) {
+          targetEditableTextState = editableState;
+          targetElement = element;
+          return;
+        }
+      }
+      element.visitChildren(visitor);
+    }
+
+    _formKey.currentContext?.visitChildElements(visitor);
+
+    if (targetElement != null) {
+      Scrollable.ensureVisible(
+        targetElement!,
+        duration: const Duration(milliseconds: 300),
+        alignment: 0.3,
+        curve: Curves.easeInOut,
+      );
+      if (targetEditableTextState != null) {
+        targetEditableTextState!.widget.focusNode.requestFocus();
+      }
+    }
+  }
+
+  void _scrollToClothItemAndFocus(ClothFormItem item, {required bool focusClothType}) {
+    Element? cardElement;
+    
+    void visitor(Element element) {
+      if (cardElement != null) return;
+      if (element.widget.key == ValueKey(item)) {
+        cardElement = element;
+        return;
+      }
+      element.visitChildren(visitor);
+    }
+    
+    _formKey.currentContext?.visitChildElements(visitor);
+    
+    if (cardElement != null) {
+      Scrollable.ensureVisible(
+        cardElement!,
+        duration: const Duration(milliseconds: 300),
+        alignment: 0.3,
+        curve: Curves.easeInOut,
+      );
+      
+      if (!focusClothType) {
+        Element? chargeElement;
+        EditableTextState? chargeEditableTextState;
+        
+        void chargeVisitor(Element element) {
+          if (chargeElement != null) return;
+          if (element is StatefulElement && element.state is EditableTextState) {
+            final editableState = element.state as EditableTextState;
+            if (editableState.widget.controller == item.chargeCtrl) {
+              chargeEditableTextState = editableState;
+              chargeElement = element;
+              return;
+            }
+          }
+          element.visitChildren(chargeVisitor);
+        }
+        
+        cardElement!.visitChildren(chargeVisitor);
+        
+        if (chargeEditableTextState != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            chargeEditableTextState!.widget.focusNode.requestFocus();
+          });
+        }
+      }
+    }
+  }
+
   // ── Save / Update ──
 
   Future<void> _onSave() async {
+    setState(() {
+      _currentErrorField = null;
+    });
+
+    // 1. Validate customer name manually (always check first)
+    if (_nameCtrl.text.trim().isEmpty) {
+      setState(() {
+        _currentErrorField = 'name';
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _formKey.currentState!.validate();
+      });
+      _scrollCtrl.animateTo(
+        0.0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+      Future.delayed(const Duration(milliseconds: 350), () {
+        if (mounted) {
+          _scrollToFieldAndFocus(_nameCtrl);
+        }
+      });
+      return;
+    }
+
+    // 2. Validate cloth types manually (check next)
+    for (final item in _clothItems) {
+      if (item.clothType == null) {
+        setState(() {
+          _currentErrorField = 'clothType_${item.id}';
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _formKey.currentState!.validate();
+        });
+        _scrollToClothItemAndFocus(item, focusClothType: true);
+        return;
+      }
+    }
+
+    // 3. Validate stitching charges manually (check last)
+    for (final item in _clothItems) {
+      if (item.chargeCtrl.text.trim().isEmpty) {
+        setState(() {
+          _currentErrorField = 'charge_${item.id}';
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _formKey.currentState!.validate();
+        });
+        _scrollToClothItemAndFocus(item, focusClothType: false);
+        return;
+      }
+    }
+
+    // 4. Fallback form validation
     if (!_formKey.currentState!.validate()) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollToFirstError();
@@ -315,7 +453,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
                       label: HindiStrings.customerName,
                       hint: HindiStrings.customerNameHint,
                       validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
+                        if (_currentErrorField == 'name' && (value == null || value.trim().isEmpty)) {
                             return HindiStrings.nameRequired;
                         }
                         return null;
@@ -856,7 +994,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
                 FormField<String>(
                   initialValue: item.clothType,
                   validator: (value) {
-                    if (item.clothType == null) {
+                    if (_currentErrorField == 'clothType_${item.id}' && item.clothType == null) {
                       return HindiStrings.clothTypeRequired;
                     }
                     return null;
@@ -1203,7 +1341,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
             ),
           ),
           validator: (value) {
-            if (value == null || value.trim().isEmpty) {
+            if (_currentErrorField == 'charge_${item.id}' && (value == null || value.trim().isEmpty)) {
               return HindiStrings.chargeRequired;
             }
             return null;
