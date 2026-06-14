@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../../controllers/order_controller.dart';
 import '../../../../core/constants/hindi_strings.dart';
+import '../../../../core/constants/darzi_colors.dart';
 import '../../../orders/presentation/screens/add_order_screen.dart';
 import '../../../orders/presentation/screens/orders_list_screen.dart';
 
@@ -47,21 +48,64 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBottomNav() {
-    return BottomNavigationBar(
-      currentIndex: _navIndex,
-      onTap: (i) => setState(() => _navIndex = i),
-      items: const [
-        BottomNavigationBarItem(
-          icon: Icon(Icons.add_circle_outline),
-          activeIcon: Icon(Icons.add_circle),
-          label: HindiStrings.newOrder,
+    return Container(
+      decoration: BoxDecoration(
+        color: DarziColors.surface,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, -3),
+          ),
+        ],
+        border: const Border(
+          top: BorderSide(color: DarziColors.divider, width: 1),
         ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.list_alt_outlined),
-          activeIcon: Icon(Icons.list_alt),
-          label: HindiStrings.allOrders,
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: BottomNavigationBar(
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            currentIndex: _navIndex,
+            onTap: (i) => setState(() => _navIndex = i),
+            iconSize: 32,
+            selectedFontSize: 16,
+            unselectedFontSize: 14,
+            selectedItemColor: DarziColors.primary,
+            unselectedItemColor: DarziColors.textGray,
+            selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
+            unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500),
+            type: BottomNavigationBarType.fixed,
+            items: const [
+              BottomNavigationBarItem(
+                icon: Padding(
+                  padding: EdgeInsets.only(bottom: 4),
+                  child: Icon(Icons.add_circle_outline),
+                ),
+                activeIcon: Padding(
+                  padding: EdgeInsets.only(bottom: 4),
+                  child: Icon(Icons.add_circle),
+                ),
+                label: HindiStrings.newOrder,
+              ),
+              BottomNavigationBarItem(
+                icon: Padding(
+                  padding: EdgeInsets.only(bottom: 4),
+                  child: Icon(Icons.list_alt_outlined),
+                ),
+                activeIcon: Padding(
+                  padding: EdgeInsets.only(bottom: 4),
+                  child: Icon(Icons.list_alt),
+                ),
+                label: HindiStrings.allOrders,
+              ),
+            ],
+          ),
         ),
-      ],
+      ),
     );
   }
 }

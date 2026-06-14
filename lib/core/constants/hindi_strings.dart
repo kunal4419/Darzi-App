@@ -87,6 +87,8 @@ class HindiStrings {
   // ── Validation ──
   static const String nameRequired = 'कृपया ग्राहक का नाम दर्ज करें';
   static const String invalidPhone = 'फ़ोन नंबर 10 अंक का होना चाहिए';
+  static const String clothTypeRequired = 'कृपया कपड़े का प्रकार चुनें';
+  static const String chargeRequired = 'कृपया सिलाई शुल्क दर्ज करें';
 
   // ── Delete Dialog ──
   static const String deleteConfirmTitle = 'ऑर्डर हटाएं?';

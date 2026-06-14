@@ -138,10 +138,59 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
     super.dispose();
   }
 
+  void _scrollToFirstError() {
+    Element? firstInvalidElement;
+    EditableTextState? firstInvalidEditableTextState;
+
+    void visitor(Element element) {
+      if (firstInvalidElement != null) return;
+
+      if (element is StatefulElement && element.state is FormFieldState) {
+        final formFieldState = element.state as FormFieldState;
+        if (formFieldState.hasError) {
+          firstInvalidElement = element;
+          
+          // Find the first EditableTextState descendant of this FormFieldState
+          void editableTextVisitor(Element childElement) {
+            if (firstInvalidEditableTextState != null) return;
+            if (childElement is StatefulElement && childElement.state is EditableTextState) {
+              firstInvalidEditableTextState = childElement.state as EditableTextState;
+              return;
+            }
+            childElement.visitChildren(editableTextVisitor);
+          }
+          element.visitChildren(editableTextVisitor);
+          return;
+        }
+      }
+      element.visitChildren(visitor);
+    }
+
+    _formKey.currentContext?.visitChildElements(visitor);
+
+    if (firstInvalidElement != null) {
+      Scrollable.ensureVisible(
+        firstInvalidElement!,
+        duration: const Duration(milliseconds: 300),
+        alignment: 0.3,
+        curve: Curves.easeInOut,
+      );
+      
+      if (firstInvalidEditableTextState != null) {
+        firstInvalidEditableTextState!.widget.focusNode.requestFocus();
+      }
+    }
+  }
+
   // ── Save / Update ──
 
   Future<void> _onSave() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToFirstError();
+      });
+      return;
+    }
 
     final List<ClothItem> clothes = _clothItems.map((e) {
       String measurementsStr = '';
@@ -204,22 +253,26 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
 
   void _clearForm() {
     FocusScope.of(context).unfocus();
+    _formKey.currentState?.reset();
     _nameCtrl.clear();
     _phoneCtrl.clear();
     _notesCtrl.clear();
     _advanceCtrl.clear();
     _totalCtrl.clear();
-    for (final item in _clothItems) {
-      item.dispose();
-    }
+    
+    final oldItems = List<ClothFormItem>.from(_clothItems);
+    
     setState(() {
       _clothItems.clear();
       _addClothItem();
       _pendingPreview = 0.0;
       _deliveryDate = null;
     });
-    _formKey.currentState?.reset();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final item in oldItems) {
+        item.dispose();
+      }
       if (_scrollCtrl.hasClients) {
         _scrollCtrl.animateTo(
           0.0,
@@ -245,112 +298,116 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
       body: Obx(
         () => Stack(
           children: [
-            Column(
-              children: [
-                Expanded(
-                  child: Form(
-                    key: _formKey,
-                    child: ListView(
-                      controller: _scrollCtrl,
-                      padding: const EdgeInsets.all(AppConstants.horizontalPadding),
-                      children: [
-                        // ── Customer Name (Required) ──
-                        VoiceInputField(
-                          controller: _nameCtrl,
-                          label: HindiStrings.customerName,
-                          hint: HindiStrings.customerNameHint,
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return HindiStrings.nameRequired;
-                            }
-                            return null;
-                          },
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        // ── Phone Number ──
-                        _buildSectionLabel(HindiStrings.phoneNumber),
-                        const SizedBox(height: 6),
-                        TextFormField(
-                          controller: _phoneCtrl,
-                          keyboardType: TextInputType.phone,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(10),
-                          ],
-                          decoration: InputDecoration(
-                            hintText: HindiStrings.phoneNumberHint,
-                            prefixIcon: const Icon(Icons.phone_outlined,
-                                color: DarziColors.textGray),
-                          ),
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        // ── Clothes List ──
-                        ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _clothItems.length,
-                          itemBuilder: (context, index) {
-                            return _buildClothItemCard(index);
-                          },
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        // ── Add Cloth Button ──
-                        OutlinedButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _addClothItem();
-                            });
-                          },
-                          icon: const Icon(Icons.add, color: DarziColors.primary),
-                          label: const Text(
-                            HindiStrings.addClothButton,
-                            style: TextStyle(
-                              color: DarziColors.primary,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            side: const BorderSide(color: DarziColors.primary, width: 1.5),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(AppConstants.borderRadiusMd),
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        // ── Additional Notes ──
-                        VoiceInputField(
-                          controller: _notesCtrl,
-                          label: HindiStrings.notes,
-                          hint: HindiStrings.notesHint,
-                          maxLines: 2,
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        // ── Delivery Date Selector ──
-                        _buildDeliveryDatePicker(),
-
-                        const SizedBox(height: 20),
-
-                        // ── Payment Section ──
-                        _buildPaymentSection(),
-
-                        const SizedBox(height: 30),
-                      ],
+            GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () {
+                FocusScope.of(context).unfocus();
+              },
+              child: Form(
+                key: _formKey,
+                child: ListView(
+                  controller: _scrollCtrl,
+                  padding: const EdgeInsets.all(AppConstants.horizontalPadding),
+                  children: [
+                    // ── Customer Name (Required) ──
+                    VoiceInputField(
+                      controller: _nameCtrl,
+                      label: HindiStrings.customerName,
+                      hint: HindiStrings.customerNameHint,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                            return HindiStrings.nameRequired;
+                        }
+                        return null;
+                      },
                     ),
-                  ),
+
+                    const SizedBox(height: 16),
+
+                    // ── Phone Number ──
+                    _buildSectionLabel(HindiStrings.phoneNumber),
+                    const SizedBox(height: 6),
+                    TextFormField(
+                      controller: _phoneCtrl,
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(10),
+                      ],
+                      decoration: InputDecoration(
+                        hintText: HindiStrings.phoneNumberHint,
+                        prefixIcon: const Icon(Icons.phone_outlined,
+                            color: DarziColors.textGray),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // ── Clothes List ──
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _clothItems.length,
+                      itemBuilder: (context, index) {
+                        return _buildClothItemCard(index);
+                      },
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // ── Add Cloth Button ──
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _addClothItem();
+                        });
+                      },
+                      icon: const Icon(Icons.add, color: DarziColors.primary),
+                      label: const Text(
+                        HindiStrings.addClothButton,
+                        style: TextStyle(
+                          color: DarziColors.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: const BorderSide(color: DarziColors.primary, width: 1.5),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(AppConstants.borderRadiusMd),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // ── Additional Notes ──
+                    VoiceInputField(
+                      controller: _notesCtrl,
+                      label: HindiStrings.notes,
+                      hint: HindiStrings.notesHint,
+                      maxLines: 2,
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // ── Delivery Date Selector ──
+                    _buildDeliveryDatePicker(),
+
+                    const SizedBox(height: 20),
+
+                    // ── Payment Section ──
+                    _buildPaymentSection(),
+
+                    const SizedBox(height: 16),
+                    _buildOrderPreviewSection(),
+
+                    const SizedBox(height: 24),
+                    _buildFormButtons(),
+                    const SizedBox(height: 40),
+                  ],
                 ),
-                _buildStickyBottomBar(),
-              ],
+              ),
             ),
 
             // ── Loading overlay ──
@@ -364,31 +421,11 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
     );
   }
 
-  Widget _buildStickyBottomBar() {
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        AppConstants.horizontalPadding,
-        12,
-        AppConstants.horizontalPadding,
-        MediaQuery.of(context).padding.bottom > 0
-            ? MediaQuery.of(context).padding.bottom + 12
-            : 16,
-      ),
-      decoration: BoxDecoration(
-        color: DarziColors.surface,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, -5),
-          ),
-        ],
-        border: const Border(
-          top: BorderSide(color: DarziColors.divider),
-        ),
-      ),
-      child: _isEditing
-          ? ElevatedButton(
+  Widget _buildFormButtons() {
+    return _isEditing
+        ? SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
               onPressed: _controller.isSaving.value ? null : _onSave,
               child: _controller.isSaving.value
                   ? const SizedBox(
@@ -406,55 +443,142 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-            )
-          : Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: OutlinedButton(
-                    onPressed: _clearForm,
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: const BorderSide(color: DarziColors.textGray),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppConstants.borderRadiusMd),
-                      ),
+            ),
+          )
+        : Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: OutlinedButton(
+                  onPressed: _clearForm,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: const BorderSide(color: DarziColors.textGray),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppConstants.borderRadiusMd),
                     ),
-                    child: const Text(
-                      HindiStrings.clearButton,
-                      style: TextStyle(
-                        color: DarziColors.textDark,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                      ),
+                  ),
+                  child: const Text(
+                    HindiStrings.clearButton,
+                    style: TextStyle(
+                      color: DarziColors.textDark,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 5,
-                  child: ElevatedButton(
-                    onPressed: _controller.isSaving.value ? null : _onSave,
-                    child: _controller.isSaving.value
-                        ? const SizedBox(
-                            height: 22,
-                            width: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text(
-                            HindiStrings.saveButton,
-                            style: TextStyle(
-                              fontSize: 17,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 5,
+                child: ElevatedButton(
+                  onPressed: _controller.isSaving.value ? null : _onSave,
+                  child: _controller.isSaving.value
+                      ? const SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          HindiStrings.saveButton,
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          );
+  }
+
+  Widget _buildOrderPreviewSection() {
+    final validItems = _clothItems.where((e) => e.clothType != null).toList();
+    if (validItems.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: DarziColors.surface,
+        borderRadius: BorderRadius.circular(AppConstants.borderRadiusMd),
+        border: Border.all(color: DarziColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'ऑर्डर प्रीव्यू (ऑर्डर का विवरण)',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: DarziColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: validItems.length,
+            separatorBuilder: (context, index) => const Divider(
+              height: 24,
+              color: DarziColors.divider,
+            ),
+            itemBuilder: (context, index) {
+              final item = validItems[index];
+              final chargeText = item.chargeCtrl.text.trim().isEmpty
+                  ? '0'
+                  : item.chargeCtrl.text.trim();
+              
+              String? subTypeText;
+              if (item.subType == 'astar') subTypeText = 'अस्तर';
+              if (item.subType == 'sada') subTypeText = 'सादा';
+              if (item.subType == 'pico') subTypeText = 'पीको';
+              if (item.subType == 'pico_fall') subTypeText = 'पीको फॉल';
+
+              return Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${item.clothType} x ${item.quantity} (₹$chargeText)',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: DarziColors.textDark,
+                      ),
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (subTypeText != null) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE3F2FD),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            subTypeText,
+                            style: const TextStyle(
+                              color: Color(0xFF0D47A1),
+                              fontSize: 12,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
+                        ),
+                      ],
+                    ],
                   ),
-                ),
-              ],
-            ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -480,6 +604,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
           const SizedBox(height: 12),
           GestureDetector(
             onTap: () {
+              FocusScope.of(context).unfocus();
               showDialog(
                 context: context,
                 builder: (context) => HindiCalendarDialog(
@@ -665,6 +790,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
   Widget _buildClothItemCard(int index) {
     final item = _clothItems[index];
     return Container(
+      key: ValueKey(item),
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: DarziColors.surface,
@@ -727,23 +853,54 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
               children: [
                 _buildSectionLabel(HindiStrings.clothType),
                 const SizedBox(height: 8),
-                ClothTypeChips(
-                  selected: item.clothType,
-                  onSelected: (type) =>
-                      setState(() {
-                        item.clothType = type;
-                        if (type == 'साड़ी') {
-                          if (item.subType != 'pico' && item.subType != 'pico_fall') {
-                            item.subType = 'pico';
-                          }
-                        } else if (type == 'ब्लाउज' || type == 'ड्रेस') {
-                          if (item.subType != 'astar' && item.subType != 'sada') {
-                            item.subType = 'astar';
-                          }
-                        } else {
-                          item.subType = null;
-                        }
-                      }),
+                FormField<String>(
+                  initialValue: item.clothType,
+                  validator: (value) {
+                    if (item.clothType == null) {
+                      return HindiStrings.clothTypeRequired;
+                    }
+                    return null;
+                  },
+                  builder: (FormFieldState<String> fieldState) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClothTypeChips(
+                          selected: item.clothType,
+                          onSelected: (type) {
+                            FocusScope.of(context).unfocus();
+                            setState(() {
+                              item.clothType = type;
+                              if (type == 'साड़ी') {
+                                if (item.subType != 'pico' && item.subType != 'pico_fall') {
+                                  item.subType = 'pico';
+                                }
+                              } else if (type == 'ब्लाउज' || type == 'ड्रेस') {
+                                if (item.subType != 'astar' && item.subType != 'sada') {
+                                  item.subType = 'astar';
+                                }
+                              } else {
+                                item.subType = null;
+                              }
+                            });
+                            fieldState.didChange(type);
+                          },
+                        ),
+                        if (fieldState.hasError)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8, left: 12),
+                            child: Text(
+                              fieldState.errorText!,
+                              style: const TextStyle(
+                                color: DarziColors.error,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 ),
 
                 // Auto-hiding / step-by-step layout based on selected cloth type
@@ -776,6 +933,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
                 label: 'अस्तर',
                 isSelected: item.subType == 'astar',
                 onTap: () {
+                  FocusScope.of(context).unfocus();
                   setState(() {
                     item.subType = 'astar';
                   });
@@ -786,6 +944,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
                 label: 'सादा',
                 isSelected: item.subType == 'sada',
                 onTap: () {
+                  FocusScope.of(context).unfocus();
                   setState(() {
                     item.subType = 'sada';
                   });
@@ -808,6 +967,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
                 label: 'पीको',
                 isSelected: item.subType == 'pico',
                 onTap: () {
+                  FocusScope.of(context).unfocus();
                   setState(() {
                     item.subType = 'pico';
                   });
@@ -818,6 +978,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
                 label: 'पीको फॉल',
                 isSelected: item.subType == 'pico_fall',
                 onTap: () {
+                  FocusScope.of(context).unfocus();
                   setState(() {
                     item.subType = 'pico_fall';
                   });
@@ -859,6 +1020,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
               IconButton(
                 icon: const Icon(Icons.remove, size: 18, color: DarziColors.textDark),
                 onPressed: () {
+                  FocusScope.of(context).unfocus();
                   if (item.quantity > 1) {
                     setState(() {
                       item.quantity--;
@@ -878,6 +1040,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
               IconButton(
                 icon: const Icon(Icons.add, size: 18, color: DarziColors.primary),
                 onPressed: () {
+                  FocusScope.of(context).unfocus();
                   setState(() {
                     item.quantity++;
                     _calculateTotalBill();
@@ -907,6 +1070,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
               label: HindiStrings.napOption,
               isSelected: item.measurementType == 'nap',
               onTap: () {
+                FocusScope.of(context).unfocus();
                 setState(() {
                   item.measurementType = 'nap';
                 });
@@ -917,6 +1081,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
               label: HindiStrings.puraneKapadeOption,
               isSelected: item.measurementType == 'purane_kapade',
               onTap: () {
+                FocusScope.of(context).unfocus();
                 setState(() {
                   item.measurementType = 'purane_kapade';
                 });
@@ -1039,7 +1204,7 @@ class _AddOrderScreenState extends State<AddOrderScreen> {
           ),
           validator: (value) {
             if (value == null || value.trim().isEmpty) {
-              return 'शुल्क दर्ज करना जरूरी है';
+              return HindiStrings.chargeRequired;
             }
             return null;
           },
